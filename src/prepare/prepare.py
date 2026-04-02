@@ -77,8 +77,7 @@ def get_header(csv):
     return header
 
 def get_data_path(op):
-    global conf
-    return f'data/source/{op['code']}/'
+    return os.path.join(os.path.dirname(os.path.realpath(__file__)), '../../data/source/' + op['code'])
 
 ## Colors
 def is_color(color):

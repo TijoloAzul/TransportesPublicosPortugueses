@@ -49,10 +49,13 @@ def parse_options():
     return parser.parse_args()
 
 def ensure_path(operator):
-    path = './data/source/' + operator
+    path = build_path(operator)
     if not os.path.isdir(path):
         logger.info("A criar pasta para " + operator)
         os.makedirs(path)
+        
+def build_path(operator):
+    return os.path.join(os.path.dirname(os.path.realpath(__file__)), '../../data/source/' + operator)
 
 def download_zip(operator):
     try:
@@ -64,7 +67,7 @@ def download_zip(operator):
     result = requests.get(url['url'], stream=True)
     if result.status_code == 200:
         z = zipfile.ZipFile(io.BytesIO(result.content))
-        path = f'./data/source/{operator['code']}'
+        path = build_path(operator['code'])
         z.extractall(path)
         db_operators.set_operator_source_downloaded(db, operator)
         logger.info(f'Extraído para {path}')
