@@ -1,2 +1,9 @@
+# Configuration files
 conf/*
 !conf/*example
+
+# Data files
+data/*
+
+# Machine files
+*.pyc
