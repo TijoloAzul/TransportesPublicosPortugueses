@@ -1,5 +1,3 @@
-from datetime import datetime 
-
 def save_routes(db, id_operator, routes):
 
     disable_all(db, id_operator)

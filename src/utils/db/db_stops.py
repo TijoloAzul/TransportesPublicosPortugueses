@@ -1,4 +1,4 @@
-from datetime import datetime 
+import pandas as pd
 
 def save_stops(db, id_operator, stops):
 
@@ -21,3 +21,13 @@ def save_stops(db, id_operator, stops):
 def disable_all(db, id_operator):
     db.execute(f"update stops set deleted = true, updated_at = now() where id_operator = %s and deleted = false",
         (str(id_operator)))
+    
+def read_stops(db, id_operator):
+    stops = db.select(f"""
+              select id_stop, name, latitude, longitude
+              from stops
+              where id_operator = {id_operator}
+                and deleted = false
+              """);
+    
+    return pd.DataFrame(stops, columns=['id', 'name', 'lat', 'lon'])

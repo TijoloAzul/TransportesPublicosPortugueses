@@ -1,0 +1,123 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+import os
+import sys
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(os.path.realpath(__file__)), '..')))
+
+import webbrowser
+import folium
+import utils.logger as logger
+import argparse
+import configparser
+from utils.db.db import db_manager
+import utils.db.db_operators as db_operators
+import utils.db.db_stops as db_stops
+
+properties_file_path = '../../conf/map.properties'
+
+## Options & configurations
+def load_properties():
+	global conf
+	conf = configparser.ConfigParser()
+
+	path = os.path.dirname(os.path.realpath(__file__))
+	properties_file = os.path.join(path, properties_file_path)
+	
+	if os.path.exists(properties_file):
+		conf.read(properties_file)
+	else:
+		logger.error("No properties file found, please configure the conf/map.properties")
+		raise Exception('Missing properties file: ' + properties_file)
+
+## Connecting to DB
+def db_connect():
+    global db
+    db = db_manager(conf['db'])
+    db.open()
+
+def db_disconnect():
+	db.close()
+
+def parse_options():
+	parser = argparse.ArgumentParser('Cria um mapa com a posição dos autocarros.\n'+
+									 'Inicialmente só desenha os rotas e a posição atual dos autocarros da carris metropolitana.')
+
+	global operators
+	operators = db_operators.get_operator_map(db)
+	operators_codes = list(operators.keys())
+	
+	parser.add_argument('--operators', '-o', nargs='*', choices=operators_codes, help='Operadores a preparar')
+	parser.add_argument('--shapes', '--linhas', '-l', action='store_true', help='Desenhar linhas')
+	parser.add_argument('--stops', '--paragens', '-p', action='store_true', help='Desenhar paragens')
+	parser.add_argument('--vehicles', '--veiculos', '-v', action='store_true', help='Desenhar veículos')
+	parser.add_argument('--simulate', '--simular', '-s', action='store_true', help='Simular veículos')
+
+	return parser.parse_args()
+
+## Stops
+def read_stops(operator):
+	logger.info(f"A ler paragens de {operator['name']}.")
+	return db_stops.read_stops(db, operator['id'])
+
+def draw_stops(city, op, stops):
+	logger.info("Drawing " + str(len(stops)) + " stops")
+	op_inner_color = conf[op]['stops_inner_color']
+	op_outer_color = conf[op]['stops_outer_color']
+	for stop in stops.itertuples():
+		folium.Circle(
+			[stop.lat, stop.lon], 
+			fillColor = op_outer_color,
+			stroke=False,
+			fillOpacity=0.5,
+			tooltip=stop.name,
+			radius=float(conf[op]['stops_size'])
+			).add_to(city)
+		folium.Circle(
+			[stop.lat, stop.lon], 
+			fillColor = op_inner_color,
+			stroke=False,
+			fillOpacity=1,
+			tooltip=stop.name,
+			radius=float(conf[op]['stops_size']) / 2
+			).add_to(city)
+
+## Main
+def get_operators(options):
+	global operators
+	if options.operators is None:
+		return operators
+	else:
+		return {op: operators[op] for op in options.operators}
+
+def build_path():
+    return os.path.normpath(os.path.join(os.path.dirname(os.path.realpath(__file__)), '../../data/map'))
+
+def ensure_path(path):
+    if not os.path.isdir(path):
+        logger.info("A criar pasta para mapas.")
+        os.makedirs(path)
+        
+def save_map(city):
+    path = build_path()
+    ensure_path(path)
+    filename = os.path.join(path, conf['map']['filename'])
+    logger.info(f'A criar um mapa: {filename}')
+    city.save(filename)
+    webbrowser.open(f"file://./{filename}")
+
+def main():
+    load_properties()
+    db_connect()
+    city = folium.Map(location=(38.7, -9.2), tiles ="cartodb positron", zoom_start = 11)
+    options = parse_options()
+    ops = get_operators(options)
+    for op in ops:
+        if options.stops:
+            stops = read_stops(ops[op])
+            draw_stops(city, op, stops)
+    
+    save_map(city)
+    db_disconnect()    
+
+main()    
