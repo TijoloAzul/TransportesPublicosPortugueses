@@ -6,9 +6,9 @@ def save_stops(db, id_operator, stops):
 
     for stop in stops.itertuples():
         db.execute(f"""
-            insert into stops (id_stop, id_operator, name, latitude, longitude, created_at, updated_at, deleted) 
+            insert into stops (code_stop, id_operator, name, latitude, longitude, created_at, updated_at, deleted) 
             values (%s, %s, %s, %s, %s, now(), now(), false)
-            on conflict (id_stop, id_operator)
+            on conflict (code_stop, id_operator)
             do update set
                 name = excluded.name, 
                 latitude = excluded.latitude,
@@ -24,7 +24,7 @@ def disable_all(db, id_operator):
     
 def read_stops(db, id_operator):
     stops = db.select(f"""
-              select id_stop, name, latitude, longitude
+              select code_stop, name, latitude, longitude
               from stops
               where id_operator = {id_operator}
                 and deleted = false

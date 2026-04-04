@@ -13,6 +13,8 @@ from utils.db.db import db_manager
 import utils.db.db_operators as db_operators
 import utils.db.db_routes as db_routes
 import utils.db.db_stops as db_stops
+import utils.db.db_shapes as db_shapes
+import utils.geo as geo
 
 import operators.carris.colors as carris_colors
 
@@ -54,7 +56,7 @@ def parse_options():
     parser.add_argument('--shapes', '--linhas', '-l', action='store_true', help='Buscar linhas (shapes). Isto corresponde ao traçado em cordenadas geográficas.')
     parser.add_argument('--stops', '--paragens', '-p', action='store_true', help='Buscar paragens. Lista de todas as paragens acessíveis.')
     parser.add_argument('--trips', '--viagens', '-v', action='store_true', help='Buscar viagens. Lista de todas as possíveis viagens. De notar que uma rota vai ter várias viagens ao dia.')
-    parser.add_argument('--schedule', '--tempos', '-t', action='store_true', help='Buscar horário. Horário das viagens, isto é a que horas é que o meio de transporte passa em cada paragem.')
+    parser.add_argument('--schedule', '--horario', '--tempos', '-t', action='store_true', help='Buscar horário. Horário das viagens, isto é a que horas é que o meio de transporte passa em cada paragem.')
     parser.add_argument('--calendar', '--calendario', '-c', action='store_true', help='Buscar calendário. Calendário das várias viagens.')
     #parser.add_argument('--start', '--de', '-d', type=datetime.fromisoformat, default=datetime.now(), help='Data de início para a construção do calendário.')
     #parser.add_argument('--end', '--até', '-a', type=datetime.fromisoformat, help='Data de fim para a construção do calendário.')
@@ -169,37 +171,33 @@ def is_continous_list(l):
         return False
     return (max(l) != min(l) + len(l) - 1)
 
-## TO REMOVE
-def read_shapes_old(op):
-    id = header.index('shape_id')
-    lat = header.index('shape_pt_lat')
-    lon = header.index('shape_pt_lon')
-    idx = header.index('shape_pt_sequence')
-
-    shapes = dict()
-
-    for row in body:
-        if row[id] not in shapes:
-            shapes[row[id]] = list()
-
-        shapes[row[id]].append({
-            'idx': int(row[idx]),
-            'lat': row[lat],
-            'lon': row[lon]})
-
-    for s in shapes:
-        shapes[s] = sorted(shapes[s], key=lambda d: d['idx'])
+def complete_shapes(op, shape_to_route, routes):
+    logger.info(f'A completar linhas de {op['name']}')
     
-    for s in shapes:
-        shape = shapes[s]
-        i = shape[0]['idx']
-        for p in shape:
-            if p['idx'] != i:
-                logger.error("Wrong point in " + s)
-                break
-            i += 1
+    shape_to_route['route'] = shape_to_route['route'].apply(lambda r: next(iter(r), None))
+    return pd.merge(shape_to_route, routes, left_on='route', right_index=True).drop(columns=['route'])
+   
+def complete_shape_points(op, shape_points):
+    logger.info(f'A calcular distâncias para as linhas de {op['name']}.')
+   
+    return geo.compute_distance_in_path(shape_points)
     
-    return shapes
+def get_route(shape, shape_to_route, routes):
+    if shape not in shape_to_route.index:
+        logger.warn(f'Linha {shape} não encontrada')
+        return None
+    if not shape_to_route.loc[shape, 'route']:
+        logger.error(f'Esta linha {shape} é muito estranha')
+        return None
+    route = next(iter(shape_to_route.loc[shape, 'route']), None)
+    if route not in routes.index:
+        logger.warn(f'Rota {route} não encontrada')
+        return None
+    return route
+
+def save_shapes(op, shapes, shape_points):
+    logger.info(f'A guardar {str(len(shapes))} linhas com {str(len(shape_points))} pontos de {op['name']}')
+    db_shapes.save_shapes(db, op['id'], shapes, shape_points)
 
 ## Trips
 def link_shape_to_routes(trips):
@@ -281,35 +279,21 @@ def save_stops(op, stops):
 
 ## Schedule
 def read_schedule(op):
-    logger.info(f'A ler tempos de {op['name']}')
+    logger.info(f'A ler horário de {op['name']}')
     filename = os.path.join(get_data_path(op), "stop_times.txt")
-    csv = read_csv(filename)
-    header = csv[0]
-    body = csv[1:]
+    dataframe = read_csv(filename)
 
-    id = header.index("trip_id")
-    arrival = header.index("arrival_time")
-    departure = header.index("departure_time")
-    stop = header.index("stop_id")
-    idx = header.index("stop_sequence")
-
-    schedule = dict()
-    for row in body:
-        if row[id] not in schedule:
-            schedule[row[id]] = list()
-        if row[arrival][0] == '-' or row[departure][0] == '-':
-            logger.error(str(row))
-        schedule[row[id]].append({
-            'id': row[id],
-            'arrival': row[arrival],
-            'departure': row[departure],
-            'stop': row[stop],
-            'idx': row[idx]})        
-        
-    for trip in schedule:
-        schedule[trip] = sorted(schedule[trip], key=lambda d: int(d['idx']))
-            
-    return schedule
+    columns = {
+        'trip_id': 'trip',
+        'arrival_time': 'arrival',
+        'departure_time': 'departure',
+        'stop_id': 'stop',
+        'stop_sequence': 'idx'}
+    
+    dataframe = dataframe[columns.keys()].rename(columns = columns)
+    dataframe = dataframe.sort_values(['trip', 'idx'])
+    
+    return dataframe
 
 ## Main
 def get_operators(options):
@@ -333,20 +317,21 @@ def main():
             stops = read_stops(op)
         if options.shapes or options.schedule:
             shape_to_route = link_shape_to_routes(trips)
-            shapes = read_shapes(op)
-        #if options.shapes or options.schedule or options.calendar:
-        #    schedule = read_schedule(op)
+            shape_points = read_shapes(op)
+        if options.shapes or options.schedule or options.calendar:
+            schedule = read_schedule(op)
         #if options.calendar:
         #    calendar = read_calendar(op, options.start, options.end)
         #    calendar = cal_helper.fill_calendar(op, calendar, trips, schedule)
-        #if options.shapes or options.schedule:
+        if options.shapes or options.schedule:
+            shapes = complete_shapes(op, shape_to_route, routes)
         #    if op in (operador.cplisboa, operador.ml, operador.mp, operador.fertagus, operador.transtejo):
         #        shapes = compute_alternative_shapes(op, schedule, trips, stops)
-        #    shapes = complete_shapes_with_info(op, shapes, shape_to_route, routes)
+            shape_points = complete_shape_points(op, shape_points)
         if options.routes:
             save_routes(op, routes)
-        #if options.shapes:
-        #    save_shapes(op, shapes)
+        if options.shapes:
+            save_shapes(op, shapes, shape_points)
         #if options.trips:
         #    save_trips(op, trips)
         if options.stops:
