@@ -1,4 +1,5 @@
 import psycopg2
+from psycopg2.extras import execute_values
 
 class db_manager:
 
@@ -20,14 +21,14 @@ class db_manager:
             cursor.execute(sql)
             return cursor.fetchall()
 
-    def execute_1(self, sql):
-        with self.conn.cursor() as cursor:
-            cursor.execute(sql)
-            self.conn.commit()
-
-    def execute(self, sql, params = None):
+    def execute(self, sql, params=None):
         with self.conn.cursor() as cursor:
             cursor.execute(sql, params)
+            self.conn.commit()
+            
+    def execute_many(self, sql, data, template=None, page_size=1000):
+        with self.conn.cursor() as cursor:
+            execute_values(cursor, sql, argslist=data, template=template, page_size=page_size)
             self.conn.commit()
 
     def close(self):

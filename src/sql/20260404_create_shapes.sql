@@ -13,7 +13,7 @@ create table shapes (
  );
 
 create table shape_points (
-    id SERIAL PRIMARY KEY,
+    id BIGSERIAL PRIMARY KEY,
     id_shape int not null references shapes(id),
     id_operator int not null references operators(id),
     idx int not null,
