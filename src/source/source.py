@@ -14,7 +14,7 @@ import io
 from utils.db.db import db_manager
 import utils.db.db_operators as db_operators
 
-properties_file_path = '../../conf/map.properties'
+properties_file_path = '../../conf/global.properties'
 
 def load_properties():
     global conf
@@ -26,7 +26,7 @@ def load_properties():
     if os.path.exists(properties_file):
         conf.read(properties_file)
     else:
-        logger.error("No properties file found, please configure the conf/map.properties")
+        logger.error("No properties file found, please configure the conf/global.properties")
         raise Exception('Missing properties file: ' + properties_file)
 
 def db_connect():
@@ -55,7 +55,7 @@ def ensure_path(operator):
         os.makedirs(path)
         
 def build_path(operator):
-    return os.path.join(os.path.dirname(os.path.realpath(__file__)), '../../data/source/' + operator)
+    return os.path.normpath(os.path.join(os.path.dirname(os.path.realpath(__file__)), '../../data/source/' + operator))
 
 def download_zip(operator):
     try:

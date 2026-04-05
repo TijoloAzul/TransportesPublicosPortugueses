@@ -1,0 +1,24 @@
+[map]
+filename=Lisboa.html
+title=Mapa de Transportes de Lisboa
+[carris]
+data_path=Carris/data
+#shape_color=LINE
+shape_color=#eba60a
+shape_width=2
+stops_inner_color=#eba60a
+stops_outer_color=#eba60a
+stops_size=7
+vehicle_color=LINE
+vehicle_size=7
+vehicle_frequency_s=1
+[cm]
+data_path=CarrisMetropolitana/data
+shape_color=#206cad
+shape_width=2
+stops_inner_color=#206cad
+stops_outer_color=#206cad
+stops_size=5
+vehicle_color=LINE
+vehicle_size=7
+vehicle_frequency_s=1

@@ -18,7 +18,7 @@ import utils.geo as geo
 
 import operators.carris.colors as carris_colors
 
-properties_file_path = '../../conf/map.properties'
+properties_file_path = '../../conf/global.properties'
 
 ## Connecting to DB
 def db_connect():
@@ -40,7 +40,7 @@ def load_properties():
     if os.path.exists(properties_file):
         conf.read(properties_file)
     else:
-        logger.error("No properties file found, please configure the conf/map.properties")
+        logger.error("No properties file found, please configure the conf/global.properties")
         raise Exception('Missing properties file: ' + properties_file)
 
 def parse_options():

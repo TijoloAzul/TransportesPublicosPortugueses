@@ -1,0 +1,5 @@
+[db]
+host=localhost
+database=public_transport
+user=<user>
+password=<password>
