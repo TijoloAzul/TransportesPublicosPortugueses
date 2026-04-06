@@ -9,5 +9,5 @@ create table routes (
  		created_at timestamp not null,
 		updated_at timestamp not null,
 		deleted boolean not null default false,
-		constraint routes_code_route_id_operator_key unique (id_route, id_operator)
+		constraint routes_code_route_id_operator_key unique (code_route, id_operator)
  );

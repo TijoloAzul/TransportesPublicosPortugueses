@@ -14,6 +14,7 @@ import utils.db.db_operators as db_operators
 import utils.db.db_routes as db_routes
 import utils.db.db_stops as db_stops
 import utils.db.db_shapes as db_shapes
+import utils.db.db_trips as db_trips
 import utils.geo as geo
 
 import operators.carris.colors as carris_colors
@@ -212,7 +213,7 @@ def link_shape_to_routes(trips):
 def read_trips(op, routes):
     logger.info(f"A ler viagens de {op['name']}.")
     filename = os.path.join(get_data_path(op), "trips.txt")
-    dataframe = read_csv(filename)
+    dataframe = read_csv(filename, dtype = {'trip_headsign': 'string'})
 
     columns = {
         'trip_id': 'id',
@@ -223,12 +224,16 @@ def read_trips(op, routes):
 
     dataframe = dataframe[columns.keys()].rename(columns = columns).set_index('id')       
     dataframe = dataframe.merge(
-        routes[['code', 'name', 'color']].add_prefix('route_'),
+        routes[['code', 'name', 'color']].add_suffix('_route'),
         how = 'left',
         left_on = 'route',
         right_index = True)
 
     return dataframe
+
+def save_trips(op, trips):
+    logger.info(f'A guardar {str(len(trips))} viagens de {op['name']}')
+    db_trips.save_trips(db, op['id'], trips)
 
 ## Routes
 def read_routes(op):
@@ -332,8 +337,8 @@ def main():
             save_routes(op, routes)
         if options.shapes:
             save_shapes(op, shapes, shape_points)
-        #if options.trips:
-        #    save_trips(op, trips)
+        if options.trips:
+            save_trips(op, trips)
         if options.stops:
             save_stops(op, stops)
         #if options.schedule:
