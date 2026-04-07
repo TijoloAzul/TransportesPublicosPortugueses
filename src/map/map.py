@@ -10,9 +10,12 @@ import folium
 import utils.logger as logger
 import argparse
 import configparser
+import json
+import pandas as pd
 from utils.db.db import db_manager
 import utils.db.db_operators as db_operators
 import utils.db.db_stops as db_stops
+import utils.db.db_shapes as db_shapes
 
 global_properties_file_path = "../../conf/global.properties"
 map_properties_file_path = "../../conf/map.{name}.properties"
@@ -30,8 +33,8 @@ def parse_options():
 	parser.add_argument('--operators', '-o', nargs='*', choices=operators_codes, help='Operadores a preparar')
 	parser.add_argument('--shapes', '--linhas', '-l', action='store_true', help='Desenhar linhas')
 	parser.add_argument('--stops', '--paragens', '-p', action='store_true', help='Desenhar paragens')
-	parser.add_argument('--vehicles', '--veiculos', '-v', action='store_true', help='Desenhar veículos')
-	parser.add_argument('--simulate', '--simular', '-s', action='store_true', help='Simular veículos')
+	#parser.add_argument('--vehicles', '--veiculos', '-v', action='store_true', help='Desenhar veículos')
+	#parser.add_argument('--simulate', '--simular', '-s', action='store_true', help='Simular veículos')
 	parser.add_argument('--config', '-c', help='Nome da configuração')
 
 	options = parser.parse_args()
@@ -88,7 +91,7 @@ def read_stops(operator):
 	return db_stops.read_stops(db, operator['id'])
 
 def draw_stops(city, op, stops):
-	logger.info("Drawing " + str(len(stops)) + " stops")
+	logger.info("A desenhar " + str(len(stops)) + " paragens")
 	op_inner_color = map_conf[op]['stops_inner_color']
 	op_outer_color = map_conf[op]['stops_outer_color']
 	for stop in stops.itertuples():
@@ -108,6 +111,40 @@ def draw_stops(city, op, stops):
 			tooltip=stop.name,
 			radius=float(map_conf[op]['stops_size']) / 2
 			).add_to(city)
+
+## Shapes
+def read_shapes(operator):
+	logger.info(f"A ler linhas de {operator['name']}.")
+	shapes = db_shapes.read_shapes(db, operator['id']).set_index('id')
+	points = db_shapes.read_points(db, operator['id'])
+	points = points.sort_values(['id_shape', 'idx'])
+    
+    
+	paths = points.groupby('id_shape')[['lat', 'lon']].apply(lambda p: p.values.tolist()).reset_index(name='path')
+	paths = paths.set_index('id_shape')
+    
+	return pd.merge(paths, shapes, left_index=True, right_index=True)
+
+def draw_shapes(city, op, shapes):
+    logger.info("A desenhar " + str(len(shapes)) + " linhas")
+    op_color = map_conf[op]['shape_color']
+    for shape in shapes.itertuples():
+        if op_color.upper() == 'LINE':
+            line_color = format_color(shape.color)
+        else:
+            line_color = map_conf[op]['shape_color']
+        folium.PolyLine(
+			shape.path, 
+			color = line_color,
+			tooltip=shape.code_route + ' - ' + shape.name,
+			weight=map_conf[op]['shape_width']
+			).add_to(city)
+
+def format_color(color):
+    if color[0] == "#":
+        return color
+    else:
+        return '#' + color 
 
 ## Main
 def get_operators(options):
@@ -142,6 +179,9 @@ def main():
 		if options.stops:
 			stops = read_stops(ops[op])
 			draw_stops(city, op, stops)
+		if options.shapes:
+			shapes = read_shapes(ops[op])
+			draw_shapes(city, op, shapes)
 	
 	save_map(city)
 	db_disconnect()

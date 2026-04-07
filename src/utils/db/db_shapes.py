@@ -24,9 +24,9 @@ def save_shapes(db, id_operator, shapes, points):
     shapes_with_ids = get_shapes_with_ids(db, id_operator)
     points_to_save = pd.merge(points, shapes_with_ids, left_index=True, right_index=True)
     
-    create_all_points(db, id_operator, points_to_save)
+    save_points(db, id_operator, points_to_save)
     
-def create_all_points(db, id_operator, points):
+def save_points(db, id_operator, points):
     
     data = [(point.id_shape, id_operator, point.idx, point.lat, point.lon, point.distance) for point in points.itertuples()]
     
@@ -36,6 +36,25 @@ def create_all_points(db, id_operator, points):
         """,
         data,
         template = "(%s, %s, %s, %s, %s, %s, now())")
+    
+def read_shapes(db, id_operator):
+    shapes = db.select(f"""
+        select id, code_shape, public_code_route, color_route, name_route
+        from shapes
+        where id_operator = {id_operator}
+        and deleted = false
+        """);
+    
+    return pd.DataFrame(shapes, columns=['id', 'code', 'code_route', 'color', 'name'])
+
+def read_points(db, id_operator):
+    points = db.select(f"""
+        select id_shape, idx, latitude, longitude, distance
+        from shape_points
+        where id_operator = {id_operator}
+        """);
+    
+    return pd.DataFrame(points, columns=['id_shape', 'idx', 'lat', 'lon', 'distance'])
     
 def disable_all(db, id_operator):
     db.execute(f"update shapes set deleted = true, updated_at = now() where id_operator = %s and deleted = false;",
