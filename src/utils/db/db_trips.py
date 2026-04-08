@@ -46,3 +46,13 @@ def get_shapes_with_ids(db, id_operator):
 
 def clean(val):
     return None if pd.isna(val) else val
+
+def read_trips(db, id_operator):
+    stops = db.select(f"""
+              select code_trip, headsign, public_code_route, color_route, name_route
+              from trips
+              where id_operator = {id_operator}
+                and deleted = false
+              """);
+    
+    return pd.DataFrame(stops, columns=['code', 'headsign', 'code_route', 'color_route', 'name_route'])

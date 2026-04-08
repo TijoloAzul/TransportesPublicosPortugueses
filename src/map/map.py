@@ -10,12 +10,13 @@ import folium
 import utils.logger as logger
 import argparse
 import configparser
-import json
 import pandas as pd
 from utils.db.db import db_manager
 import utils.db.db_operators as db_operators
 import utils.db.db_stops as db_stops
 import utils.db.db_shapes as db_shapes
+from folium.plugins import Realtime
+from folium import JsCode
 
 global_properties_file_path = "../../conf/global.properties"
 map_properties_file_path = "../../conf/map.{name}.properties"
@@ -33,7 +34,7 @@ def parse_options():
 	parser.add_argument('--operators', '-o', nargs='*', choices=operators_codes, help='Operadores a preparar')
 	parser.add_argument('--shapes', '--linhas', '-l', action='store_true', help='Desenhar linhas')
 	parser.add_argument('--stops', '--paragens', '-p', action='store_true', help='Desenhar paragens')
-	#parser.add_argument('--vehicles', '--veiculos', '-v', action='store_true', help='Desenhar veículos')
+	parser.add_argument('--vehicles', '--veiculos', '-v', action='store_true', help='Desenhar veículos')
 	#parser.add_argument('--simulate', '--simular', '-s', action='store_true', help='Simular veículos')
 	parser.add_argument('--config', '-c', help='Nome da configuração')
 
@@ -85,6 +86,17 @@ def db_connect():
 def db_disconnect():
 	db.close()
 
+## Vehicles
+def draw_vehicles(city, operator):
+	global global_conf
+	source = "http://localhost:5000/realtime/" + operator['code']
+	logger.info("Live Vehicles: connecting to " + source)
+	Realtime(
+		source,
+		point_to_layer=JsCode("(f, latlng) => { return L.circleMarker(latlng, {radius: f.properties.size, fillOpacity: 0.5, color: f.properties.color}).bindTooltip(f.properties.text)}"),
+		interval=1000*int(map_conf[operator['code']]['vehicle_frequency_s'])
+	).add_to(city)
+ 
 ## Stops
 def read_stops(operator):
 	logger.info(f"A ler paragens de {operator['name']}.")
@@ -118,22 +130,22 @@ def read_shapes(operator):
 	shapes = db_shapes.read_shapes(db, operator['id']).set_index('id')
 	points = db_shapes.read_points(db, operator['id'])
 	points = points.sort_values(['id_shape', 'idx'])
-    
-    
+	
+	
 	paths = points.groupby('id_shape')[['lat', 'lon']].apply(lambda p: p.values.tolist()).reset_index(name='path')
 	paths = paths.set_index('id_shape')
-    
+	
 	return pd.merge(paths, shapes, left_index=True, right_index=True)
 
 def draw_shapes(city, op, shapes):
-    logger.info("A desenhar " + str(len(shapes)) + " linhas")
-    op_color = map_conf[op]['shape_color']
-    for shape in shapes.itertuples():
-        if op_color.upper() == 'LINE':
-            line_color = format_color(shape.color)
-        else:
-            line_color = map_conf[op]['shape_color']
-        folium.PolyLine(
+	logger.info("A desenhar " + str(len(shapes)) + " linhas")
+	op_color = map_conf[op]['shape_color']
+	for shape in shapes.itertuples():
+		if op_color.upper() == 'LINE':
+			line_color = format_color(shape.color)
+		else:
+			line_color = map_conf[op]['shape_color']
+		folium.PolyLine(
 			shape.path, 
 			color = line_color,
 			tooltip=shape.code_route + ' - ' + shape.name,
@@ -141,10 +153,10 @@ def draw_shapes(city, op, shapes):
 			).add_to(city)
 
 def format_color(color):
-    if color[0] == "#":
-        return color
-    else:
-        return '#' + color 
+	if color[0] == "#":
+		return color
+	else:
+		return '#' + color 
 
 ## Main
 def get_operators(options):
@@ -182,6 +194,10 @@ def main():
 		if options.shapes:
 			shapes = read_shapes(ops[op])
 			draw_shapes(city, op, shapes)
+   
+	for op in ops:
+		if options.vehicles:
+			draw_vehicles(city, ops[op])
 	
 	save_map(city)
 	db_disconnect()
