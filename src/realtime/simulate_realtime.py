@@ -6,6 +6,7 @@ import sys
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(os.path.realpath(__file__)), '..')))
 
 from flask import Flask
+from datetime import datetime
 import flask
 import utils.logger as logger
 import argparse
@@ -16,6 +17,7 @@ import requests
 from utils.db.db import db_manager
 import utils.db.db_operators as db_operators
 import utils.db.db_trips as db_trips
+from google.transit import gtfs_realtime_pb2
 
 global_properties_file_path = "../../conf/global.properties"
 generic_map_properties_file_path = "../../conf/map.generic.properties"
@@ -38,7 +40,7 @@ def add_header(response):
 @app.route("/realtime/<op_name>")
 def realtime(op_name):
 	start = time.time()
-	logger.info('Pedindo posições para {op_name}')
+	logger.info(f'Pedindo posições para {op_name}')
 	
 	op = operators[op_name]
 	if op is None:
@@ -53,6 +55,8 @@ def realtime(op_name):
 def get_realtime_geojson(op):
 	if op['code'] == 'cm':
 		return get_cm_realtime()
+	elif op['code'] == 'carris':
+		return get_carris_realtime()
 	#else:
 	#    return requests.get("http://localhost:5001/simulate/" + op.name).json()
 
@@ -62,6 +66,7 @@ def get_cm_realtime():
 	op_trips = trips['cm']
 	vehicles = requests.get("https://api.carrismetropolitana.pt/vehicles").json()
 	features = list()
+	now = datetime.now()
 	for vehicle in vehicles:
 		if is_vehicle_complete(vehicle):
 			id = vehicle['id']
@@ -69,15 +74,84 @@ def get_cm_realtime():
 			lat = vehicle['lat']
 			lon = vehicle['lon']
 			size = map_conf['cm']['vehicle_size']
+			time_delta = (now - datetime.fromtimestamp(vehicle['timestamp']))
+			if time_delta.total_seconds() < 300:
+				if trip in op_trips.index:
+					text = str(vehicle['line_id']) + ' : ' + str(op_trips.loc[trip, 'headsign'])
+					color = '#' + op_trips.loc[trip, 'color_route']
+				else:
+					logger.warn('Missing trip for cm: ' + str(vehicle['trip_id']))
+					text = str(vehicle['line_id'])
+					color = 'gray'
+				if map_conf['cm']['vehicle_color'] != 'LINE':
+					color = map_conf['cm']['vehicle_color']
+			
+				features.append({
+					"type": "Feature",
+					"geometry": {
+						"type": "Point",
+						"coordinates": [lon, lat]},
+					"properties": {
+						"id": id,
+						"color": color,
+						"text": text,
+						"size": size}})
+    
+	return {'type': 'FeatureCollection', 'features': features}
+
+def is_vehicle_complete(vehicle):
+    	return 'lat' in vehicle and 'lon' in vehicle and 'id' in vehicle and 'trip_id' in vehicle and 'line_id' in vehicle
+
+# Carris
+def ler_gtfs_rt(url):
+	feed = gtfs_realtime_pb2.FeedMessage()
+	
+	try:
+		response = requests.get(url)
+		binario = response.content
+		feed.ParseFromString(binario)
+		return feed
+
+	except Exception as e:
+		logger.error(f"Erro ao ler o ficheiro: {e}")
+		return None
+
+def get_carris_realtime():
+	global trips
+	op_trips = trips['carris']
+	vehicles = ler_gtfs_rt('https://gateway.carris.pt/gateway/gtfs/api/v2.11/GTFS/realtime/vehiclepositions')
+	features = list()
+	if vehicles is None:
+		return {'type': 'FeatureCollection', 'features': features}
+
+	for entity in vehicles.entity:
+		if is_vehicle(entity):
+			vehicle = entity.vehicle
+			id = entity.id
+			trip = vehicle.trip.trip_id
+			lat = vehicle.position.latitude
+			lon = vehicle.position.longitude
+			size = map_conf['carris']['vehicle_size']
 			if trip in op_trips.index:
-				text = str(vehicle['line_id']) + ' : ' + str(op_trips.loc[trip, 'headsign'])
-				color = '#' + op_trips.loc[trip, 'color_route']
+				if op_trips.loc[trip, 'headsign'] is None:
+					try:
+						if '-' in op_trips.loc[trip, 'name_route']:
+							headsign = str(op_trips.loc[trip, 'name_route']).split('-')[1-vehicle.trip.direction_id].strip()
+						else:
+							headsign = str(op_trips.loc[trip, 'name_route'])
+					except:
+						logger.error(str(op_trips.loc[trip, 'name_route']) + ' -- ' + str(vehicle.trip.direction_id))
+						headsign = str(op_trips.loc[trip, 'name_route'])
+				else:
+					headsign = op_trips.loc[trip, 'headsign']
+				text = str(op_trips.loc[trip, 'code_route']) + ' : ' + headsign
+				color = op_trips.loc[trip, 'color_route']
 			else:
-				logger.warn('Missing trip for cm: ' + str(vehicle['trip_id']))
-				text = str(vehicle['line_id'])
+				logger.warn('Missing trip for carris: ' + str(trip))
+				text = str(vehicle.trip.route_id)
 				color = 'gray'
-			if map_conf['cm']['vehicle_color'] != 'LINE':
-				color = map_conf['cm']['vehicle_color']
+			if map_conf['carris']['vehicle_color'] != 'LINE':
+				color = map_conf['carris']['vehicle_color']
 			
 			features.append({
 				"type": "Feature",
@@ -91,8 +165,8 @@ def get_cm_realtime():
 					"size": size}})
 	return {'type': 'FeatureCollection', 'features': features}
 
-def is_vehicle_complete(vehicle):
-    return 'lat' in vehicle and 'lon' in vehicle and 'id' in vehicle and 'trip_id' in vehicle and 'line_id' in vehicle
+def is_vehicle(entity):
+    return entity.HasField('vehicle')
 
 ## Connecting to DB
 def db_connect():
@@ -157,10 +231,10 @@ def main():
 	global operators, trips
 	operators = db_operators.get_operator_map(db)
 	trips = dict()
-	options = {'operators': ['cm']}
+	options = {'operators': ['cm', 'carris']}
 	ops = get_operators(options)
 	for op in ops.values():
-		if op['code'] == 'cm':
+		if op['code'] == 'cm' or op['code'] == 'carris':
 			trips[op['code']] = read_trips(op)
 		else: 
 			logger.warn(f'O operador {op['name']} não tem realtime.')
