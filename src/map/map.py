@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+# PYTHON_ARGCOMPLETE_OK
 
 import os
 import sys
@@ -9,6 +10,7 @@ import webbrowser
 import folium
 import utils.logger as logger
 import argparse
+import argcomplete
 import configparser
 import pandas as pd
 from utils.db.db import db_manager
@@ -37,6 +39,8 @@ def parse_options():
 	parser.add_argument('--vehicles', '--veiculos', '-v', action='store_true', help='Desenhar veículos')
 	#parser.add_argument('--simulate', '--simular', '-s', action='store_true', help='Simular veículos')
 	parser.add_argument('--config', '-c', help='Nome da configuração')
+
+	argcomplete.autocomplete(parser)
 
 	options = parser.parse_args()
 

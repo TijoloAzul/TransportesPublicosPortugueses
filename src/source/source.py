@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+# PYTHON_ARGCOMPLETE_OK
 
 import os
 import sys
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(os.path.realpath(__file__)), '..')))
 
 import argparse
+import argcomplete
 import configparser
 import utils.logger as logger
 import requests
@@ -45,6 +47,8 @@ def parse_options():
     operators_codes = list(operators.keys())
     parser.add_argument('--operators', '-operadoras', '-o', 
             nargs='+', required=True, choices=operators_codes, help='Operadores a preparar')
+
+    argcomplete.autocomplete(parser)
 
     return parser.parse_args()
 

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+# PYTHON_ARGCOMPLETE_OK
 
 import os
 import sys
@@ -7,6 +8,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(os.path.realpath(__
 
 import utils.logger as logger
 import argparse
+import argcomplete
 import configparser
 import pandas as pd
 from utils.db.db import db_manager
@@ -62,6 +64,8 @@ def parse_options():
     #parser.add_argument('--start', '--de', '-d', type=datetime.fromisoformat, default=datetime.now(), help='Data de início para a construção do calendário.')
     #parser.add_argument('--end', '--até', '-a', type=datetime.fromisoformat, help='Data de fim para a construção do calendário.')
 
+    argcomplete.autocomplete(parser)
+    
     options = parser.parse_args()
     #if_nothing_do_all(options)
     #create_end_date_if_needed(options)
